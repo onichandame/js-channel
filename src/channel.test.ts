@@ -1,5 +1,5 @@
 import { promisify } from 'util'
-import { Channel } from './channel'
+import { Channel, CloseEvent, ErrorEvent, ValueEvent } from './channel'
 
 describe(`channel`, () => {
   test(`normal subscription`, async () => {
@@ -39,4 +39,31 @@ describe(`channel`, () => {
     for await (const _ of chan) iterations++
     expect(iterations).toEqual(0)
   }, 1000)
+  test(`clean up`, async () => {
+    class MockChannel<T> extends Channel<T> {
+      get em() {
+        return this._em
+      }
+    }
+    const chan = new MockChannel<number>()
+    setTimeout(async () => {
+      for (let i = 0; i < 3; ++i) {
+        await chan.send(i)
+        await promisify(setTimeout)(100)
+      }
+      chan.close()
+    }, 100)
+    let tested = false
+    for await (const _ of chan) {
+      tested = true
+      expect(chan.em.listenerCount(ValueEvent)).toBeGreaterThan(0)
+      expect(chan.em.listenerCount(ErrorEvent)).toBeGreaterThan(0)
+      expect(chan.em.listenerCount(CloseEvent)).toBeGreaterThan(0)
+      break
+    }
+    expect(chan.em.listenerCount(ValueEvent)).toEqual(0)
+    expect(chan.em.listenerCount(ErrorEvent)).toEqual(0)
+    expect(chan.em.listenerCount(CloseEvent)).toEqual(0)
+    expect(tested).toBeTruthy()
+  })
 })
